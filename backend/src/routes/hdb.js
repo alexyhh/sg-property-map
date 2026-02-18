@@ -6,6 +6,7 @@ import {
   getTransactions,
   getTransactionsCsv,
   ensureCacheLoaded,
+  fetchLatestTransactions,
   getCacheStatus,
 } from '../services/hdbDataService.js';
 
@@ -148,6 +149,28 @@ router.get('/export', authenticate, requireTier('pro'), async (req, res) => {
 // ---------------------------------------------------------------------------
 router.get('/status', authenticate, (_req, res) => {
   res.json(getCacheStatus());
+});
+
+// POST /api/hdb/refresh - manual data refresh (protected by service role key)
+router.post('/refresh', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const expectedKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!authHeader || !expectedKey || authHeader !== `Bearer ${expectedKey}`) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    res.json({ message: 'Data refresh started', status: 'in_progress' });
+    // Run in background after sending response
+    fetchLatestTransactions().then(result => {
+      console.log('Manual data refresh completed:', result);
+    }).catch(err => {
+      console.error('Manual data refresh failed:', err.message);
+    });
+  } catch (err) {
+    console.error('Error triggering refresh:', err);
+    res.status(500).json({ error: 'Failed to trigger refresh' });
+  }
 });
 
 export default router;

@@ -2,9 +2,14 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
+// Railway internal Postgres (postgres:16-alpine) doesn't use SSL
+// Only enable SSL if DATABASE_URL contains an external host
+const dbUrl = process.env.DATABASE_URL || '';
+const needsSsl = dbUrl.includes('railway.app') || dbUrl.includes('rlwy.net');
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  connectionString: dbUrl,
+  ssl: needsSsl ? { rejectUnauthorized: false } : false,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,

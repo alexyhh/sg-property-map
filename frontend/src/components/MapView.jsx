@@ -4,7 +4,7 @@ import { GeoJsonLayer } from '@deck.gl/layers';
 import { DeckGL } from '@deck.gl/react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import useMapStore from '../stores/mapStore';
-import { fetchPlanningAreas, fetchMetrics } from '../lib/api';
+import { fetchPlanningAreas, fetchMetricsSummary } from '../lib/api';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
@@ -69,18 +69,17 @@ export default function MapView() {
     return () => { cancelled = true; };
   }, [granularity, setGeojsonData, setLoading]);
 
-  // Fetch metrics when metric, period, or flatType changes
+  // Fetch bulk metrics for heatmap coloring
   useEffect(() => {
     let cancelled = false;
 
     async function loadMetrics() {
       setLoading(true);
       try {
-        const params = { metric, period };
+        const params = { metric, period, level: granularity };
         if (flatType !== 'all') params.flat_type = flatType;
-        const data = await fetchMetrics(params);
+        const data = await fetchMetricsSummary(params);
         if (!cancelled) {
-          // Convert array to map by area name
           const metricsMap = {};
           if (Array.isArray(data)) {
             data.forEach((item) => {
@@ -101,7 +100,7 @@ export default function MapView() {
 
     loadMetrics();
     return () => { cancelled = true; };
-  }, [metric, period, flatType, setMetricsData, setLoading]);
+  }, [metric, period, flatType, granularity, setMetricsData, setLoading]);
 
   // Compute min/max from metrics
   const { minVal, maxVal } = useMemo(() => {

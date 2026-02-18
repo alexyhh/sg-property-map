@@ -93,4 +93,34 @@ router.get('/tier', authenticate, async (req, res) => {
   }
 });
 
+// One-time admin setup: POST /api/user/admin-setup
+// Protected by SUPABASE_SERVICE_ROLE_KEY as bearer token
+router.post('/admin-setup', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const expectedKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!authHeader || !expectedKey || authHeader !== `Bearer ${expectedKey}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { userId, email, tier, displayName } = req.body;
+    if (!userId || !email || !tier) {
+      return res.status(400).json({ error: 'Missing userId, email, or tier' });
+    }
+
+    const result = await query(
+      `INSERT INTO profiles (id, email, display_name, tier, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (id) DO UPDATE SET tier = $4, display_name = $3, updated_at = NOW()
+       RETURNING *`,
+      [userId, email, displayName || 'Admin', tier]
+    );
+
+    res.json({ profile: result.rows[0] });
+  } catch (err) {
+    console.error('Error in POST /api/user/admin-setup:', err);
+    res.status(500).json({ error: 'Failed to setup admin' });
+  }
+});
+
 export default router;

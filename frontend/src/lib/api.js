@@ -45,13 +45,26 @@ export function fetchMetrics(params) {
   return apiGet(`/api/hdb/metrics?${qs}`);
 }
 
+export async function fetchMetricsSummary(params) {
+  const qs = new URLSearchParams(params).toString();
+  const res = await fetch(`${BASE_URL}/api/hdb/metrics/summary?${qs}`, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error('Failed to fetch summary');
+  return res.json();
+}
+
 export function fetchTransactions(params) {
   const qs = new URLSearchParams(params).toString();
   return apiGet(`/api/hdb/transactions?${qs}`);
 }
 
-export function fetchPlanningAreas() {
-  return apiGet('/api/areas/planning');
+export async function fetchPlanningAreas() {
+  const res = await fetch(`${BASE_URL}/api/areas/planning`, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error('Failed to fetch planning areas');
+  return res.json();
 }
 
 export function fetchDistricts() {

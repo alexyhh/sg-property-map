@@ -1,34 +1,31 @@
 import { Router } from 'express';
+import { readFileSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { authenticate, requireTier } from '../middleware/auth.js';
 import { query } from '../services/db.js';
 import { PLANNING_AREAS, getPlanningAreaNames } from '../data/planningAreas.js';
 import { POSTAL_DISTRICTS, getDistrictNames } from '../data/districts.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
 
+// Load bundled URA planning area boundary GeoJSON at startup
 let planningAreaGeoJson = null;
-let planningAreaGeoJsonFetchedAt = null;
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+try {
+  const geoPath = path.join(__dirname, '../data/planningAreaBoundaries.geojson');
+  planningAreaGeoJson = JSON.parse(readFileSync(geoPath, 'utf-8'));
+  console.log(`Loaded ${planningAreaGeoJson.features?.length || 0} planning area polygons from bundled GeoJSON`);
+} catch (err) {
+  console.warn('Failed to load bundled GeoJSON, will use fallback:', err.message);
+}
 
-router.get('/planning', async (_req, res) => {
+router.get('/planning', (_req, res) => {
   try {
-    if (planningAreaGeoJson && planningAreaGeoJsonFetchedAt &&
-        Date.now() - planningAreaGeoJsonFetchedAt < CACHE_TTL_MS) {
+    if (planningAreaGeoJson) {
       return res.json(planningAreaGeoJson);
     }
-
-    const geoJson = await fetchPlanningAreaGeoJson();
-
-    if (geoJson) {
-      planningAreaGeoJson = geoJson;
-      planningAreaGeoJsonFetchedAt = Date.now();
-      return res.json(planningAreaGeoJson);
-    }
-
-    const fallback = buildFallbackPlanningAreaGeoJson();
-    planningAreaGeoJson = fallback;
-    planningAreaGeoJsonFetchedAt = Date.now();
-    return res.json(fallback);
+    return res.json(buildFallbackPlanningAreaGeoJson());
   } catch (err) {
     console.error('Error in GET /api/areas/planning:', err);
     res.status(500).json({ error: 'Failed to load planning area data' });
@@ -130,38 +127,6 @@ router.delete('/watchlist/:id', authenticate, requireTier('pro'), async (req, re
     res.status(500).json({ error: 'Failed to remove area from watchlist' });
   }
 });
-
-async function fetchPlanningAreaGeoJson() {
-  try {
-    const url = 'https://data.gov.sg/api/action/datastore_search?resource_id=d_4765979a2e274e0b94bbb1b4247ebfac&limit=100';
-    const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
-
-    if (!response.ok) return null;
-
-    const json = await response.json();
-
-    if (json?.result?.records) {
-      const features = json.result.records
-        .filter((r) => r.geojson || r.geometry)
-        .map((r) => {
-          const geometry = r.geojson ? JSON.parse(r.geojson) : r.geometry;
-          const name = (r.pln_area_n || r.name || '').toUpperCase();
-          return {
-            type: 'Feature',
-            properties: { name, planningAreaName: name, center: PLANNING_AREAS[name]?.center || null },
-            geometry,
-          };
-        });
-
-      if (features.length > 0) return { type: 'FeatureCollection', features };
-    }
-
-    return null;
-  } catch (err) {
-    console.warn('Failed to fetch planning area GeoJSON:', err.message);
-    return null;
-  }
-}
 
 function buildFallbackPlanningAreaGeoJson() {
   const features = Object.entries(PLANNING_AREAS).map(([key, info]) => ({

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, requireTier } from '../middleware/auth.js';
 import {
   getMetrics,
+  getAllAreaMetrics,
   getTransactions,
   getTransactionsCsv,
   ensureCacheLoaded,
@@ -9,6 +10,21 @@ import {
 } from '../services/hdbDataService.js';
 
 const router = Router();
+
+// ---------------------------------------------------------------------------
+// GET /api/hdb/metrics/summary  — bulk summary for heatmap (no auth required)
+// ---------------------------------------------------------------------------
+router.get('/metrics/summary', async (req, res) => {
+  try {
+    await ensureCacheLoaded();
+    const { metric = 'avg_psf', period = '12m', level = 'planning_area' } = req.query;
+    const summary = getAllAreaMetrics(level, period, 'all');
+    res.json(summary);
+  } catch (err) {
+    console.error('Error in GET /api/hdb/metrics/summary:', err);
+    res.status(500).json({ error: 'Failed to retrieve summary metrics' });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // GET /api/hdb/metrics

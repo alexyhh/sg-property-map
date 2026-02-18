@@ -38,6 +38,32 @@ export async function fetchLatestTransactions() {
   }
 }
 
+export function getAllAreaMetrics(level = 'planning_area', period = '12m', flatType = 'all') {
+  const cache = level === 'district' ? metricsCache.district : metricsCache.planning_area;
+  const summary = [];
+
+  for (const [areaName, transactions] of Object.entries(cache)) {
+    let pool = [...transactions];
+    const cutoff = periodCutoff(period);
+    if (cutoff) pool = pool.filter((t) => t.month >= cutoff);
+    if (flatType && flatType !== 'all') {
+      const ft = flatType.toUpperCase();
+      pool = pool.filter((t) => t.flat_type?.toUpperCase() === ft);
+    }
+    if (pool.length === 0) continue;
+
+    const prices = pool.map((t) => t.resale_price);
+    const psfs = pool.map((t) => t.psf);
+    const avg_psf = Math.round((psfs.reduce((a, b) => a + b, 0) / psfs.length) * 100) / 100;
+    const median_price = median(prices);
+    const volume = pool.length;
+
+    summary.push({ planning_area: areaName, avg_psf, median_price, volume });
+  }
+
+  return summary;
+}
+
 export function getMetrics(level, area, period, flatType) {
   const transactions = filterTransactions(level, area, period, flatType);
 
@@ -275,8 +301,10 @@ function periodCutoff(period) {
   const now = new Date();
   switch (period) {
     case '3m': { const d = new Date(now); d.setMonth(d.getMonth() - 3); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+    case '6m': { const d = new Date(now); d.setMonth(d.getMonth() - 6); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
     case '12m': case undefined: case null: { const d = new Date(now); d.setFullYear(d.getFullYear() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
     case '3y': { const d = new Date(now); d.setFullYear(d.getFullYear() - 3); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+    case '5y': { const d = new Date(now); d.setFullYear(d.getFullYear() - 5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
     case 'all': return null;
     default: return null;
   }

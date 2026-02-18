@@ -2,8 +2,9 @@ import { query, getClient } from './db.js';
 import { PLANNING_AREAS } from '../data/planningAreas.js';
 import { POSTAL_DISTRICTS, townToDistrict } from '../data/districts.js';
 
-const DATA_GOV_API =
-  'https://data.gov.sg/api/action/datastore_search?resource_id=d_8b84c4ee58e3cfc0ece0d773c8ca6abc';
+const DATASET_ID = 'd_8b84c4ee58e3cfc0ece0d773c8ca6abc';
+const POLL_DOWNLOAD_URL = `https://api-open.data.gov.sg/v1/public/api/datasets/${DATASET_ID}/poll-download`;
+const LEGACY_API = `https://data.gov.sg/api/action/datastore_search?resource_id=${DATASET_ID}`;
 const PAGE_SIZE = 10000;
 const SQM_TO_SQFT = 10.764;
 
@@ -169,13 +170,34 @@ export function getCacheStatus() {
 // Internal helpers
 
 async function fetchAllPages() {
+  // Try the new CSV download API first (no rate limiting)
+  try {
+    console.log('Trying CSV bulk download from data.gov.sg...');
+    const pollRes = await fetch(POLL_DOWNLOAD_URL, { signal: AbortSignal.timeout(15000) });
+    if (pollRes.ok) {
+      const pollData = await pollRes.json();
+      if (pollData?.data?.url) {
+        const csvRes = await fetch(pollData.data.url, { signal: AbortSignal.timeout(120000) });
+        if (csvRes.ok) {
+          const csvText = await csvRes.text();
+          const records = parseCsv(csvText);
+          console.log(`Downloaded ${records.length} records via CSV bulk download`);
+          return records;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('CSV bulk download failed, falling back to paged API:', err.message);
+  }
+
+  // Fallback: legacy paged API
   let allRecords = [];
   let offset = 0;
   let hasMore = true;
 
   while (hasMore) {
-    const url = `${DATA_GOV_API}&limit=${PAGE_SIZE}&offset=${offset}`;
-    const response = await fetch(url);
+    const url = `${LEGACY_API}&limit=${PAGE_SIZE}&offset=${offset}`;
+    const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
 
     if (!response.ok) {
       throw new Error(`data.gov.sg API returned ${response.status}: ${response.statusText}`);
@@ -191,9 +213,34 @@ async function fetchAllPages() {
       console.warn('Reached 500k record safety cap');
       hasMore = false;
     }
+
+    // Respect rate limits
+    if (hasMore) await new Promise(r => setTimeout(r, 1000));
   }
 
   return allRecords;
+}
+
+function parseCsv(text) {
+  const lines = text.split('\n');
+  if (lines.length < 2) return [];
+
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+  const records = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    const values = line.split(',');
+    const record = {};
+    headers.forEach((h, idx) => {
+      record[h] = values[idx]?.trim() || '';
+    });
+    records.push(record);
+  }
+
+  return records;
 }
 
 function processRecord(raw) {

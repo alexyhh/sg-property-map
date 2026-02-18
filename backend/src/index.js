@@ -45,12 +45,19 @@ if (process.env.NODE_ENV === 'production') {
   app.use(express.static(frontendPath));
 }
 
+import { existsSync } from 'fs';
+
 app.get('/api/health', (_req, res) => {
+  const geoPath = path.join(__dirname, 'data/planningAreaBoundaries.geojson');
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: process.env.NODE_ENV || 'development',
+    geoJsonExists: existsSync(geoPath),
+    geoJsonPath: geoPath,
+    cwd: process.cwd(),
+    dirname: __dirname,
   });
 });
 

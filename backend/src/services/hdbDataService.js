@@ -134,7 +134,7 @@ export async function ensureCacheLoaded() {
     if (result.rows.length > 0) {
       transactionsCache = result.rows.map((row) => ({
         ...row,
-        psf: row.psf ?? (row.resale_price / row.floor_area_sqm) * SQM_TO_SQFT,
+        psf: row.psf ?? row.resale_price / (row.floor_area_sqm * SQM_TO_SQFT),
         planning_area: row.planning_area ?? row.town?.toUpperCase(),
         district: row.district ?? townToDistrict(row.town),
       }));
@@ -243,15 +243,26 @@ function parseCsv(text) {
   return records;
 }
 
+// Map HDB town names to URA planning area names where they differ
+const TOWN_TO_PLANNING_AREA = {
+  'CENTRAL AREA': 'DOWNTOWN CORE',
+  'KALLANG/WHAMPOA': 'KALLANG',
+};
+
+function townToPlanningArea(town) {
+  return TOWN_TO_PLANNING_AREA[town] || town;
+}
+
 function processRecord(raw) {
   try {
     const resalePrice = parseFloat(raw.resale_price);
     const floorArea = parseFloat(raw.floor_area_sqm);
     if (!resalePrice || !floorArea || floorArea === 0) return null;
 
-    const psf = (resalePrice / floorArea) * SQM_TO_SQFT;
+    const psf = resalePrice / (floorArea * SQM_TO_SQFT);
     const town = (raw.town || '').toUpperCase().trim();
     const district = townToDistrict(town);
+    const planningArea = townToPlanningArea(town);
 
     return {
       month: raw.month, town, flat_type: raw.flat_type, block: raw.block,
@@ -260,7 +271,7 @@ function processRecord(raw) {
       lease_commence_date: raw.lease_commence_date,
       remaining_lease: raw.remaining_lease || null,
       resale_price: resalePrice, psf: Math.round(psf * 100) / 100,
-      planning_area: town, district,
+      planning_area: planningArea, district,
     };
   } catch {
     return null;
